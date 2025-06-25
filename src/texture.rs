@@ -1,12 +1,9 @@
 //! Loading and rendering textures. Also render textures, per-pixel image manipulations.
 
-use crate::{
-    color::Color, file::load_file, get_context, get_quad_context, math::Rect,
-    text::atlas::SpriteKey, Error,
-};
-
 pub use crate::quad_gl::FilterMode;
+
 use crate::quad_gl::{DrawMode, Vertex};
+use crate::{color::Color, get_context, get_quad_context, math::Rect};
 use glam::{vec2, Vec2};
 use slotmap::{TextureIdSlotMap, TextureSlotId};
 use std::sync::Arc;
@@ -29,28 +26,27 @@ pub(crate) struct TexturesContext {
     textures: TextureIdSlotMap,
     removed: Vec<TextureSlotId>,
 }
+
 impl TexturesContext {
-    pub fn new() -> TexturesContext {
-        TexturesContext {
+    pub fn new() -> Self {
+        Self {
             textures: TextureIdSlotMap::new(),
             removed: Vec::with_capacity(200),
         }
     }
+
     fn schedule_removed(&mut self, texture: TextureSlotId) {
         self.removed.push(texture);
     }
+
     fn store_texture(&mut self, texture: miniquad::TextureId) -> TextureHandle {
         TextureHandle::Managed(Arc::new(TextureSlotGuarded(self.textures.insert(texture))))
     }
+
     pub fn texture(&self, texture: TextureSlotId) -> Option<miniquad::TextureId> {
         self.textures.get(texture)
     }
-    // fn remove(&mut self, texture: TextureSlotId) {
-    //     self.textures.remove(texture);
-    // }
-    pub const fn len(&self) -> usize {
-        self.textures.len()
-    }
+
     pub fn garbage_collect(&mut self, ctx: &mut miniquad::Context) {
         for texture in self.removed.drain(0..) {
             if let Some(texture) = self.textures.get(texture) {
@@ -108,6 +104,8 @@ impl Image {
     ///     Some(ImageFormat::Png),
     ///     );
     /// ```
+
+    #[cfg(feature = "image")]
     pub fn from_file_with_format(
         bytes: &[u8],
         format: Option<image::ImageFormat>,
@@ -305,6 +303,7 @@ impl Image {
 
     /// Saves this image as a PNG file.
     /// This method is not supported on web and will panic.
+    #[cfg(feature = "image")]
     pub fn export_png(&self, path: &str) {
         let mut bytes = vec![0; self.width as usize * self.height as usize * 4];
 
@@ -328,15 +327,17 @@ impl Image {
 }
 
 /// Loads an [Image] from a file into CPU memory.
+#[cfg(feature = "image")]
 pub async fn load_image(path: &str) -> Result<Image, Error> {
-    let bytes = load_file(path).await?;
+    let bytes = crate::file::load_file(path).await?;
 
     Image::from_file_with_format(&bytes, None)
 }
 
 /// Loads a [Texture2D] from a file into GPU memory.
+#[cfg(feature = "image")]
 pub async fn load_texture(path: &str) -> Result<Texture2D, Error> {
-    let bytes = load_file(path).await?;
+    let bytes = crate::file::load_file(path).await?;
 
     Ok(Texture2D::from_file_with_format(&bytes[..], None))
 }
@@ -515,36 +516,19 @@ pub fn draw_texture_ex(
 ) {
     let context = get_context();
 
-    let [mut width, mut height] = texture.size().to_array();
+    let [width, height] = texture.size().to_array();
 
     let Rect {
-        x: mut sx,
-        y: mut sy,
-        w: mut sw,
-        h: mut sh,
+        x: sx,
+        y: sy,
+        w: sw,
+        h: sh,
     } = params.source.unwrap_or(Rect {
         x: 0.,
         y: 0.,
         w: width,
         h: height,
     });
-
-    let texture_opt = context
-        .texture_batcher
-        .get(texture)
-        .map(|(batched_texture, uv)| {
-            let [batched_width, batched_height] = batched_texture.size().to_array();
-            sx = ((sx / width) * uv.w + uv.x) * batched_width;
-            sy = ((sy / height) * uv.h + uv.y) * batched_height;
-            sw = (sw / width) * uv.w * batched_width;
-            sh = (sh / height) * uv.h * batched_height;
-
-            width = batched_width;
-            height = batched_height;
-
-            batched_texture
-        });
-    let texture = texture_opt.as_ref().unwrap_or(texture);
 
     let (mut w, mut h) = match params.dest_size {
         Some(dst) => (dst.x, dst.y),
@@ -687,6 +671,7 @@ impl Texture2D {
     ///     );
     /// # }
     /// ```
+    #[cfg(feature = "image")]
     pub fn from_file_with_format(bytes: &[u8], format: Option<image::ImageFormat>) -> Texture2D {
         let img = if let Some(fmt) = format {
             image::load_from_memory_with_format(bytes, fmt)
@@ -737,8 +722,6 @@ impl Texture2D {
         let texture = ctx.textures.store_texture(texture);
         let texture = Texture2D { texture };
         texture.set_filter(ctx.default_filter_mode);
-
-        ctx.texture_batcher.add_unbatched(&texture);
 
         texture
     }
@@ -890,65 +873,4 @@ impl Texture2D {
         ctx.texture_read_pixels(self.raw_miniquad_id(), &mut image.bytes);
         image
     }
-}
-
-pub(crate) struct Batcher {
-    unbatched: Vec<Texture2D>,
-    atlas: crate::text::atlas::Atlas,
-}
-
-impl Batcher {
-    pub fn new(ctx: &mut dyn miniquad::RenderingBackend) -> Batcher {
-        Batcher {
-            unbatched: vec![],
-            atlas: crate::text::atlas::Atlas::new(ctx, miniquad::FilterMode::Linear),
-        }
-    }
-
-    pub fn add_unbatched(&mut self, texture: &Texture2D) {
-        self.unbatched.push(texture.weak_clone());
-    }
-
-    pub fn get(&mut self, texture: &Texture2D) -> Option<(Texture2D, Rect)> {
-        let id = SpriteKey::Texture(texture.raw_miniquad_id());
-        let uv_rect = self.atlas.get_uv_rect(id)?;
-        Some((Texture2D::unmanaged(self.atlas.texture()), uv_rect))
-    }
-}
-
-/// Build an atlas out of all currently loaded texture
-/// Later on all draw_texture calls with texture available in the atlas will use
-/// the one from the atlas
-/// NOTE: the GPU memory and texture itself in Texture2D will still be allocated
-/// and Texture->Image conversions will work with Texture2D content, not the atlas
-pub fn build_textures_atlas() {
-    let context = get_context();
-
-    for texture in context.texture_batcher.unbatched.drain(0..) {
-        let sprite: Image = texture.get_texture_data();
-        let id = SpriteKey::Texture(texture.raw_miniquad_id());
-
-        context.texture_batcher.atlas.cache_sprite(id, sprite);
-    }
-
-    let texture = context.texture_batcher.atlas.texture();
-    let (w, h) = get_quad_context().texture_size(texture);
-    crate::telemetry::log_string(&format!("Atlas: {w} {h}"));
-}
-
-#[doc(hidden)]
-/// Macroquad do not have track of all loaded fonts.
-/// Fonts store their characters as ID's in the atlas.
-/// There fore resetting the atlas will render all fonts unusable.
-pub unsafe fn reset_textures_atlas() {
-    let context = get_context();
-    context.fonts_storage = crate::text::FontsStorage::new(&mut *context.quad_context);
-    context.texture_batcher = Batcher::new(&mut *context.quad_context);
-}
-
-pub fn set_default_filter_mode(filter: FilterMode) {
-    let context = get_context();
-
-    context.default_filter_mode = filter;
-    context.texture_batcher.atlas.set_filter(filter);
 }

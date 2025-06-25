@@ -36,11 +36,13 @@
 //! }
 //!```
 
+use conf::Config;
 use miniquad::*;
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 mod exec;
@@ -56,103 +58,31 @@ pub mod material;
 pub mod math;
 pub mod models;
 pub mod shapes;
+
+#[cfg(feature = "text")]
 pub mod text;
+
 pub mod texture;
 pub mod time;
-pub mod ui;
 pub mod window;
 
-pub mod experimental;
-
 pub mod prelude;
-
-pub mod telemetry;
+pub use error::Error;
 
 mod error;
 
-pub use error::Error;
-
-/// Macroquad entry point.
-///
-/// ```skip
-/// #[main("Window name")]
-/// async fn main() {
-/// }
-/// ```
-///
-/// ```skip
-/// fn window_conf() -> Conf {
-///     Conf {
-///         window_title: "Window name".to_owned(),
-///         fullscreen: true,
-///         ..Default::default()
-///     }
-/// }
-/// #[macroquad::main(window_conf)]
-/// async fn main() {
-/// }
-/// ```
-///
-/// ## Error handling
-///
-/// `async fn main()` can have the same signature as a normal `main` in Rust.
-/// The most typical use cases are:
-/// * `async fn main() {}`
-/// * `async fn main() -> Result<(), Error> {}` (note that `Error` should implement `Debug`)
-///
-/// When a lot of third party crates are involved and very different errors may happens, `anyhow` crate may help:
-/// * `async fn main() -> anyhow::Result<()> {}`
-///
-/// For better control over game errors custom error type may be introduced:
-/// ```skip
-/// #[derive(Debug)]
-/// enum GameError {
-///     FileError(macroquad::FileError),
-///     SomeThirdPartyCrateError(somecrate::Error)
-/// }
-/// impl From<macroquad::file::FileError> for GameError {
-///     fn from(error: macroquad::file::FileError) -> GameError {
-///         GameError::FileError(error)
-///     }
-/// }
-/// impl From<somecrate::Error> for GameError {
-///     fn from(error: somecrate::Error) -> GameError {
-///         GameError::SomeThirdPartyCrateError(error)
-///     }
-/// }
-/// ```
-pub use macroquad_macro::main;
-
-/// #[macroquad::test] fn test() {}
-///
-/// Very similar to macroquad::main
-/// Right now it will still spawn a window, just like ::main, therefore
-/// is not really useful for anything than developping macroquad itself
-#[doc(hidden)]
-pub use macroquad_macro::test;
-
-/// Cross platform random generator.
-pub mod rand {
-    pub use quad_rand::*;
-}
-
-#[cfg(not(feature = "log-rs"))]
+#[cfg(not(feature = "log"))]
 /// Logging macros, available with miniquad "log-impl" feature.
 pub mod logging {
     pub use miniquad::{debug, error, info, trace, warn};
 }
-#[cfg(feature = "log-rs")]
-// Use logging facade
+
+#[cfg(feature = "log")]
 pub use ::log as logging;
+
 pub use miniquad;
 
-use crate::{
-    color::{colors::*, Color},
-    quad_gl::QuadGl,
-    texture::TextureHandle,
-    ui::ui_context::UiContext,
-};
-
+use crate::{color::Color, quad_gl::QuadGl, texture::TextureHandle};
 use glam::{vec2, Mat4, Vec2};
 
 pub(crate) mod thread_assert {
@@ -169,12 +99,14 @@ pub(crate) mod thread_assert {
             thread_local! {
                 static CURRENT_THREAD_ID: std::thread::ThreadId = std::thread::current().id();
             }
+
             assert!(THREAD_ID.is_some());
             assert!(THREAD_ID.unwrap() == CURRENT_THREAD_ID.with(|id| *id));
         }
     }
 }
-struct Context {
+
+pub struct Context {
     audio_context: audio::AudioContext,
 
     screen_width: f32,
@@ -205,21 +137,14 @@ struct Context {
     gl: QuadGl,
     camera_matrix: Option<Mat4>,
 
-    ui_context: UiContext,
-    coroutines_context: experimental::coroutines::CoroutinesContext,
-    fonts_storage: text::FontsStorage,
-
     pc_assets_folder: Option<String>,
 
     start_time: f64,
     last_frame_time: f64,
     frame_time: f64,
 
-    #[cfg(one_screenshot)]
-    counter: usize,
-
     camera_stack: Vec<camera::CameraState>,
-    texture_batcher: texture::Batcher,
+
     unwind: bool,
     recovery_future: Option<Pin<Box<dyn Future<Output = ()>>>>,
 
@@ -304,8 +229,6 @@ impl MiniquadInputEvent {
 }
 
 impl Context {
-    const DEFAULT_BG_COLOR: Color = BLACK;
-
     fn new(
         update_on: conf::UpdateTrigger,
         default_filter_mode: crate::FilterMode,
@@ -349,13 +272,9 @@ impl Context {
                 draw_call_index_capacity,
             ),
 
-            ui_context: UiContext::new(&mut *ctx, screen_width, screen_height),
-            fonts_storage: text::FontsStorage::new(&mut *ctx),
-            texture_batcher: texture::Batcher::new(&mut *ctx),
             camera_stack: vec![],
 
             audio_context: audio::AudioContext::new(),
-            coroutines_context: experimental::coroutines::CoroutinesContext::new(),
 
             pc_assets_folder: None,
 
@@ -363,8 +282,6 @@ impl Context {
             last_frame_time: miniquad::date::now(),
             frame_time: 1. / 60.,
 
-            #[cfg(one_screenshot)]
-            counter: 0,
             unwind: false,
             recovery_future: None,
 
@@ -379,7 +296,7 @@ impl Context {
     }
 
     /// Returns the handle for this texture.
-    pub fn raw_miniquad_id(&self, handle: &TextureHandle) -> miniquad::TextureId {
+    pub(crate) fn raw_miniquad_id(&self, handle: &TextureHandle) -> miniquad::TextureId {
         match handle {
             TextureHandle::Unmanaged(texture) => *texture,
             TextureHandle::Managed(texture) => self
@@ -399,37 +316,20 @@ impl Context {
     }
 
     fn begin_frame(&mut self) {
-        telemetry::begin_gpu_query("GPU");
-
-        self.ui_context.process_input();
-
-        let color = Self::DEFAULT_BG_COLOR;
+        let color = Color::BLACK;
 
         get_quad_context().clear(Some((color.r, color.g, color.b, color.a)), None, None);
+
         self.gl.reset();
     }
 
     fn end_frame(&mut self) {
-        crate::experimental::scene::update();
-
         self.perform_render_passes();
 
-        self.ui_context.draw(get_quad_context(), &mut self.gl);
         let screen_mat = self.pixel_perfect_projection_matrix();
         self.gl.draw(get_quad_context(), screen_mat);
 
         get_quad_context().commit_frame();
-
-        #[cfg(one_screenshot)]
-        {
-            get_context().counter += 1;
-            if get_context().counter == 3 {
-                crate::prelude::get_screen_data().export_png("screenshot.png");
-                panic!("screenshot successfully saved to `screenshot.png`");
-            }
-        }
-
-        telemetry::end_gpu_query();
 
         self.mouse_wheel = Vec2::new(0., 0.);
         self.keys_pressed.clear();
@@ -481,7 +381,7 @@ impl Context {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut CONTEXT: Option<Context> = None;
 
 // This is required for #[macroquad::test]
@@ -516,7 +416,6 @@ struct Stage {
 
 impl EventHandler for Stage {
     fn resize_event(&mut self, width: f32, height: f32) {
-        let _z = telemetry::ZoneGuard::new("Event::resize_event");
         get_context().screen_width = width;
         get_context().screen_height = height;
 
@@ -666,7 +565,7 @@ impl EventHandler for Stage {
     fn key_down_event(&mut self, keycode: KeyCode, modifiers: KeyMods, repeat: bool) {
         let context = get_context();
         context.keys_down.insert(keycode);
-        if repeat == false {
+        if !repeat {
             context.keys_pressed.insert(keycode);
         }
 
@@ -703,8 +602,6 @@ impl EventHandler for Stage {
     }
 
     fn update(&mut self) {
-        let _z = telemetry::ZoneGuard::new("Event::update");
-
         // Unless called every frame, cursor will not remain grabbed
         miniquad::window::set_cursor_grab(get_context().cursor_grabbed);
 
@@ -727,14 +624,9 @@ impl EventHandler for Stage {
 
     fn draw(&mut self) {
         {
-            let _z = telemetry::ZoneGuard::new("Event::draw");
-
             use std::panic;
 
-            {
-                let _z = telemetry::ZoneGuard::new("Event::draw begin_frame");
-                get_context().begin_frame();
-            }
+            get_context().begin_frame();
 
             fn maybe_unwind(unwind: bool, f: impl FnOnce() + Sized + panic::UnwindSafe) -> bool {
                 if unwind {
@@ -748,42 +640,33 @@ impl EventHandler for Stage {
             let result = maybe_unwind(
                 get_context().unwind,
                 AssertUnwindSafe(|| {
-                    let _z = telemetry::ZoneGuard::new("Event::draw user code");
-
                     if exec::resume(&mut self.main_future).is_some() {
                         self.main_future = Box::pin(async move {});
                         miniquad::window::quit();
                         return;
                     }
-                    get_context().coroutines_context.update();
                 }),
             );
 
-            if result == false {
+            if !result {
                 if let Some(recovery_future) = get_context().recovery_future.take() {
                     self.main_future = recovery_future;
                 }
             }
 
-            {
-                let _z = telemetry::ZoneGuard::new("Event::draw end_frame");
-                get_context().end_frame();
-            }
+            get_context().end_frame();
+
             get_context().frame_time = date::now() - get_context().last_frame_time;
             get_context().last_frame_time = date::now();
 
             #[cfg(any(target_arch = "wasm32", target_os = "linux"))]
             {
-                let _z = telemetry::ZoneGuard::new("glFinish/glFLush");
-
                 unsafe {
                     miniquad::gl::glFlush();
                     miniquad::gl::glFinish();
                 }
             }
         }
-
-        telemetry::reset();
     }
 
     fn window_restored_event(&mut self) {
@@ -845,7 +728,7 @@ pub mod conf {
     }
 
     #[derive(Debug)]
-    pub struct Conf {
+    pub struct Config {
         pub miniquad_conf: miniquad::conf::Conf,
         /// With miniquad_conf.platform.blocking_event_loop = true,
         /// next_frame().await will never finish and will wait forever with
@@ -867,7 +750,7 @@ pub mod conf {
         pub draw_call_index_capacity: usize,
     }
 
-    impl Default for Conf {
+    impl Default for Config {
         fn default() -> Self {
             Self {
                 miniquad_conf: miniquad::conf::Conf::default(),
@@ -880,9 +763,9 @@ pub mod conf {
     }
 }
 
-impl From<miniquad::conf::Conf> for conf::Conf {
-    fn from(conf: miniquad::conf::Conf) -> conf::Conf {
-        conf::Conf {
+impl From<miniquad::conf::Conf> for conf::Config {
+    fn from(conf: miniquad::conf::Conf) -> conf::Config {
+        conf::Config {
             miniquad_conf: conf,
             update_on: None,
             default_filter_mode: crate::FilterMode::Linear,
@@ -892,58 +775,53 @@ impl From<miniquad::conf::Conf> for conf::Conf {
     }
 }
 
-/// Not meant to be used directly, only from the macro.
-#[doc(hidden)]
-pub struct Window {}
-
-impl Window {
-    pub fn new(label: &str, future: impl Future<Output = ()> + 'static) {
-        Window::from_config(
-            conf::Conf {
-                miniquad_conf: miniquad::conf::Conf {
-                    window_title: label.to_string(),
-                    ..Default::default()
-                },
+pub fn run(title: &str, future: impl Future<Output = ()> + 'static) {
+    run_with_config(
+        conf::Config {
+            miniquad_conf: miniquad::conf::Conf {
+                window_title: title.to_string(),
                 ..Default::default()
             },
-            future,
-        );
-    }
+            ..Default::default()
+        },
+        future,
+    );
+}
 
-    pub fn from_config(config: impl Into<conf::Conf>, future: impl Future<Output = ()> + 'static) {
-        let conf::Conf {
-            miniquad_conf,
-            update_on,
+pub fn run_with_config(config: Config, future: impl Future<Output = ()> + 'static) {
+    let conf::Config {
+        miniquad_conf,
+        update_on,
+        default_filter_mode,
+        draw_call_vertex_capacity,
+        draw_call_index_capacity,
+    } = config.into();
+
+    miniquad::start(miniquad_conf, move || {
+        thread_assert::set_thread_id();
+        let context = Context::new(
+            update_on.unwrap_or_default(),
             default_filter_mode,
             draw_call_vertex_capacity,
             draw_call_index_capacity,
-        } = config.into();
-        miniquad::start(miniquad_conf, move || {
-            thread_assert::set_thread_id();
-            let context = Context::new(
-                update_on.unwrap_or_default(),
-                default_filter_mode,
-                draw_call_vertex_capacity,
-                draw_call_index_capacity,
-            );
-            unsafe { CONTEXT = Some(context) };
+        );
+        unsafe { CONTEXT = Some(context) };
 
-            Box::new(Stage {
-                main_future: Box::pin(async {
-                    future.await;
-                    unsafe {
-                        if let Some(ctx) = CONTEXT.as_mut() {
-                            ctx.gl.reset();
-                        }
+        Box::new(Stage {
+            main_future: Box::pin(async {
+                future.await;
+                unsafe {
+                    if let Some(ctx) = CONTEXT.as_mut() {
+                        ctx.gl.reset();
                     }
-                }),
-            })
-        });
-    }
+                }
+            }),
+        })
+    });
 }
 
 /// Information about a dropped file.
 pub struct DroppedFile {
-    pub path: Option<std::path::PathBuf>,
+    pub path: Option<PathBuf>,
     pub bytes: Option<Vec<u8>>,
 }

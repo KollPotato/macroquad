@@ -1,14 +1,11 @@
 //! Legacy module, code should be either removed or moved to different modules
 
-use miniquad::*;
-
+pub(crate) use crate::models::Vertex;
 pub use miniquad::{FilterMode, TextureId as MiniquadTexture, UniformDesc};
 
-use crate::{color::Color, logging::warn, telemetry, texture::Texture2D, tobytes::ToBytes, Error};
-
+use crate::{color::Color, logging::warn, texture::Texture2D, tobytes::ToBytes, Error};
+use miniquad::*;
 use std::collections::BTreeMap;
-
-pub(crate) use crate::models::Vertex;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DrawMode {
@@ -787,9 +784,7 @@ impl QuadGl {
             ctx.draw(0, dc.indices_count as i32, 1);
             ctx.end_render_pass();
 
-            if dc.capture {
-                telemetry::track_drawcall(&pipeline.pipeline, bindings, dc.indices_count);
-            }
+            if dc.capture {}
 
             dc.vertices_count = 0;
             dc.indices_count = 0;
@@ -800,10 +795,6 @@ impl QuadGl {
         self.draw_calls_count = 0;
         self.batch_index_buffer.clear();
         self.batch_vertex_buffer.clear();
-    }
-
-    pub(crate) fn capture(&mut self, capture: bool) {
-        self.state.capture = capture;
     }
 
     pub fn get_projection_matrix(&self) -> glam::Mat4 {

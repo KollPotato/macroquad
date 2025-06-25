@@ -61,11 +61,6 @@ impl TextureIdSlotMap {
         }
     }
 
-    /// Returns the number of elements in the slot map.
-    pub const fn len(&self) -> usize {
-        self.num_elems as usize
-    }
-
     /// Returns [`true`] if the slot map contains `key`.
     #[inline(always)]
     fn contains_key(&self, key: TextureSlotId) -> bool {

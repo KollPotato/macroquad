@@ -1,12 +1,12 @@
 //! 3D shapes and models, loading 3d models from files, drawing 3D primitives.
 
 use crate::{color::Color, get_context};
-
 use crate::{quad_gl::DrawMode, texture::Texture2D};
 use glam::{vec2, vec3, vec4, Quat, Vec2, Vec3, Vec4};
+use std::borrow::Cow;
 
 #[repr(C)]
-#[derive(Clone, Debug, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Vertex {
     pub position: Vec3,
     pub uv: Vec2,
@@ -38,9 +38,10 @@ impl Vertex {
     }
 }
 
-pub struct Mesh {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
+#[derive(Debug, Clone)]
+pub struct Mesh<'a> {
+    pub vertices: Cow<'a, &'a [Vertex]>,
+    pub indices: &'a [u16],
     pub texture: Option<Texture2D>,
 }
 
@@ -49,12 +50,13 @@ pub fn draw_mesh(mesh: &Mesh) {
 
     context.gl.texture(mesh.texture.as_ref());
     context.gl.draw_mode(DrawMode::Triangles);
-    context.gl.geometry(&mesh.vertices[..], &mesh.indices[..]);
+    context.gl.geometry(&mesh.vertices, &mesh.indices[..]);
 }
 
 fn draw_quad(vertices: [Vertex; 4]) {
     let context = get_context();
     let indices = [0, 1, 2, 0, 2, 3];
+
     context.gl.draw_mode(DrawMode::Triangles);
     context.gl.geometry(&vertices, &indices);
 }

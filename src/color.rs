@@ -1,7 +1,5 @@
 //! Color types and helpers.
 
-pub use colors::*;
-
 /// A color represented by 4 floats: red, green, blue and alpha.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -14,6 +12,34 @@ pub struct Color {
     pub b: f32,
     /// Alpha channel value from 0.0 to 1.0.
     pub a: f32,
+}
+
+impl Color {
+    pub const LIGHT_GRAY: Self = Self::new(0.78, 0.78, 0.78, 1.00);
+    pub const GRAY: Self = Self::new(0.51, 0.51, 0.51, 1.00);
+    pub const DARK_GRAY: Self = Self::new(0.31, 0.31, 0.31, 1.00);
+    pub const YELLOW: Self = Self::new(0.99, 0.98, 0.00, 1.00);
+    pub const GOLD: Self = Self::new(1.00, 0.80, 0.00, 1.00);
+    pub const ORANGE: Self = Self::new(1.00, 0.63, 0.00, 1.00);
+    pub const PINK: Self = Self::new(1.00, 0.43, 0.76, 1.00);
+    pub const RED: Self = Self::new(0.90, 0.16, 0.22, 1.00);
+    pub const MAROON: Self = Self::new(0.75, 0.13, 0.22, 1.00);
+    pub const GREEN: Self = Self::new(0.00, 0.89, 0.19, 1.00);
+    pub const LIME: Self = Self::new(0.00, 0.62, 0.18, 1.00);
+    pub const DARK_GREEN: Self = Self::new(0.00, 0.46, 0.17, 1.00);
+    pub const SKY_BLUE: Self = Self::new(0.40, 0.75, 1.00, 1.00);
+    pub const BLUE: Self = Self::new(0.00, 0.47, 0.95, 1.00);
+    pub const DARK_BLUE: Self = Self::new(0.00, 0.32, 0.67, 1.00);
+    pub const PURPLE: Self = Self::new(0.78, 0.48, 1.00, 1.00);
+    pub const VIOLET: Self = Self::new(0.53, 0.24, 0.75, 1.00);
+    pub const DARK_PURPLE: Self = Self::new(0.44, 0.12, 0.49, 1.00);
+    pub const BEIGE: Self = Self::new(0.83, 0.69, 0.51, 1.00);
+    pub const BROWN: Self = Self::new(0.50, 0.42, 0.31, 1.00);
+    pub const DARK_BROWN: Self = Self::new(0.30, 0.25, 0.18, 1.00);
+    pub const WHITE: Self = Self::new(1.00, 1.00, 1.00, 1.00);
+    pub const BLACK: Self = Self::new(0.00, 0.00, 0.00, 1.00);
+    pub const BLANK: Self = Self::new(0.00, 0.00, 0.00, 0.00);
+    pub const MAGENTA: Self = Self::new(1.00, 0.00, 1.00, 1.00);
 }
 
 /// Build a color from 4 components of 0..255 values.
@@ -146,55 +172,36 @@ impl Color {
     }
 }
 
-pub mod colors {
-    //! Constants for some common colors.
+fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
+    if t < 0.0 {
+        t += 1.0
+    }
+    if t > 1.0 {
+        t -= 1.0
+    }
+    if t < 1.0 / 6.0 {
+        return p + (q - p) * 6.0 * t;
+    }
+    if t < 1.0 / 2.0 {
+        return q;
+    }
+    if t < 2.0 / 3.0 {
+        return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+    }
 
-    use super::Color;
-
-    pub const LIGHTGRAY: Color = Color::new(0.78, 0.78, 0.78, 1.00);
-    pub const GRAY: Color = Color::new(0.51, 0.51, 0.51, 1.00);
-    pub const DARKGRAY: Color = Color::new(0.31, 0.31, 0.31, 1.00);
-    pub const YELLOW: Color = Color::new(0.99, 0.98, 0.00, 1.00);
-    pub const GOLD: Color = Color::new(1.00, 0.80, 0.00, 1.00);
-    pub const ORANGE: Color = Color::new(1.00, 0.63, 0.00, 1.00);
-    pub const PINK: Color = Color::new(1.00, 0.43, 0.76, 1.00);
-    pub const RED: Color = Color::new(0.90, 0.16, 0.22, 1.00);
-    pub const MAROON: Color = Color::new(0.75, 0.13, 0.22, 1.00);
-    pub const GREEN: Color = Color::new(0.00, 0.89, 0.19, 1.00);
-    pub const LIME: Color = Color::new(0.00, 0.62, 0.18, 1.00);
-    pub const DARKGREEN: Color = Color::new(0.00, 0.46, 0.17, 1.00);
-    pub const SKYBLUE: Color = Color::new(0.40, 0.75, 1.00, 1.00);
-    pub const BLUE: Color = Color::new(0.00, 0.47, 0.95, 1.00);
-    pub const DARKBLUE: Color = Color::new(0.00, 0.32, 0.67, 1.00);
-    pub const PURPLE: Color = Color::new(0.78, 0.48, 1.00, 1.00);
-    pub const VIOLET: Color = Color::new(0.53, 0.24, 0.75, 1.00);
-    pub const DARKPURPLE: Color = Color::new(0.44, 0.12, 0.49, 1.00);
-    pub const BEIGE: Color = Color::new(0.83, 0.69, 0.51, 1.00);
-    pub const BROWN: Color = Color::new(0.50, 0.42, 0.31, 1.00);
-    pub const DARKBROWN: Color = Color::new(0.30, 0.25, 0.18, 1.00);
-    pub const WHITE: Color = Color::new(1.00, 1.00, 1.00, 1.00);
-    pub const BLACK: Color = Color::new(0.00, 0.00, 0.00, 1.00);
-    pub const BLANK: Color = Color::new(0.00, 0.00, 0.00, 0.00);
-    pub const MAGENTA: Color = Color::new(1.00, 0.00, 1.00, 1.00);
+    p
 }
 
-#[rustfmt::skip]
 pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color {
     let r;
     let g;
     let b;
 
-    if s == 0.0 {  r = l; g = l; b = l; }
-    else {
-        fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
-            if t < 0.0 { t += 1.0 }
-            if t > 1.0 { t -= 1.0 }
-            if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
-            if t < 1.0 / 2.0 { return q; }
-            if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
-            p
-        }
-
+    if s == 0.0 {
+        r = l;
+        g = l;
+        b = l;
+    } else {
         let q = if l < 0.5 {
             l * (1.0 + s)
         } else {

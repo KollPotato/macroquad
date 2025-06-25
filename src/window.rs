@@ -1,12 +1,10 @@
 //! Window and associated to window rendering context related functions.
 
-use crate::{get_context, get_quad_context};
-
 use crate::color::Color;
+use crate::{get_context, get_quad_context};
 
 // miniquad is re-exported for the use in combination with `get_internal_gl`
 pub use miniquad;
-
 pub use miniquad::conf::Conf;
 
 /// Block execution until the next frame.

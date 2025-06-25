@@ -1,9 +1,8 @@
+use crate::Error;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-use crate::Error;
 
 // Returns Pending as long as its inner bool is false.
 #[derive(Default)]

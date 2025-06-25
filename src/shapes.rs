@@ -34,12 +34,11 @@ pub fn draw_triangle_lines(v1: Vec2, v2: Vec2, v3: Vec2, thickness: f32, color: 
 pub fn draw_rectangle(x: f32, y: f32, w: f32, h: f32, color: Color) {
     let context = get_context();
 
-    #[rustfmt::skip]
     let vertices = [
-        Vertex::new(x    , y    , 0., 0.0, 0.0, color),
-        Vertex::new(x + w, y    , 0., 1.0, 0.0, color),
+        Vertex::new(x, y, 0., 0.0, 0.0, color),
+        Vertex::new(x + w, y, 0., 1.0, 0.0, color),
         Vertex::new(x + w, y + h, 0., 1.0, 1.0, color),
-        Vertex::new(x    , y + h, 0., 0.0, 1.0, color),
+        Vertex::new(x, y + h, 0., 0.0, 1.0, color),
     ];
     let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
@@ -54,17 +53,16 @@ pub fn draw_rectangle_lines(x: f32, y: f32, w: f32, h: f32, thickness: f32, colo
     let context = get_context();
     let t = thickness / 2.;
 
-    #[rustfmt::skip]
     let vertices = [
-        Vertex::new(x    , y    , 0., 0.0, 1.0, color),
-        Vertex::new(x + w, y    , 0., 1.0, 0.0, color),
+        Vertex::new(x, y, 0., 0.0, 1.0, color),
+        Vertex::new(x + w, y, 0., 1.0, 0.0, color),
         Vertex::new(x + w, y + h, 0., 1.0, 1.0, color),
-        Vertex::new(x    , y + h, 0., 0.0, 0.0, color),
+        Vertex::new(x, y + h, 0., 0.0, 0.0, color),
         //inner rectangle
-        Vertex::new(x + t    , y + t    , 0., 0.0, 0.0, color),
-        Vertex::new(x + w - t, y + t    , 0., 0.0, 0.0, color),
+        Vertex::new(x + t, y + t, 0., 0.0, 0.0, color),
+        Vertex::new(x + w - t, y + t, 0., 0.0, 0.0, color),
         Vertex::new(x + w - t, y + h - t, 0., 0.0, 0.0, color),
-        Vertex::new(x + t    , y + h - t, 0., 0.0, 0.0, color),
+        Vertex::new(x + t, y + h - t, 0., 0.0, 0.0, color),
     ];
     let indices: [u16; 24] = [
         0, 1, 4, 1, 4, 5, 1, 5, 6, 1, 2, 6, 3, 7, 2, 2, 7, 6, 0, 4, 3, 3, 4, 7,
@@ -91,31 +89,108 @@ pub fn draw_rectangle_lines_ex(
         * Mat4::from_axis_angle(vec3(0.0, 0.0, 1.0), params.rotation)
         * Mat4::from_scale(vec3(w, h, 1.0));
 
-    #[rustfmt::skip]
-    let v = [
-        transform_matrix * vec4( 0.0 - params.offset.x,  0.0 - params.offset.y, 0.0, 1.0),
-        transform_matrix * vec4( 0.0 - params.offset.x,  1.0 - params.offset.y, 0.0, 1.0),
-        transform_matrix * vec4( 1.0 - params.offset.x,  1.0 - params.offset.y, 0.0, 1.0),
-        transform_matrix * vec4( 1.0 - params.offset.x,  0.0 - params.offset.y, 0.0, 1.0),
-
-        transform_matrix * vec4( 0.0 - params.offset.x + tx,  0.0 - params.offset.y + ty, 0.0, 1.0),
-        transform_matrix * vec4( 0.0 - params.offset.x + tx,  1.0 - params.offset.y - ty, 0.0, 1.0),
-        transform_matrix * vec4( 1.0 - params.offset.x - tx,  1.0 - params.offset.y - ty, 0.0, 1.0),
-        transform_matrix * vec4( 1.0 - params.offset.x - tx,  0.0 - params.offset.y + ty, 0.0, 1.0),
+    let vertices = [
+        transform_matrix * vec4(0.0 - params.offset.x, 0.0 - params.offset.y, 0.0, 1.0),
+        transform_matrix * vec4(0.0 - params.offset.x, 1.0 - params.offset.y, 0.0, 1.0),
+        transform_matrix * vec4(1.0 - params.offset.x, 1.0 - params.offset.y, 0.0, 1.0),
+        transform_matrix * vec4(1.0 - params.offset.x, 0.0 - params.offset.y, 0.0, 1.0),
+        transform_matrix
+            * vec4(
+                0.0 - params.offset.x + tx,
+                0.0 - params.offset.y + ty,
+                0.0,
+                1.0,
+            ),
+        transform_matrix
+            * vec4(
+                0.0 - params.offset.x + tx,
+                1.0 - params.offset.y - ty,
+                0.0,
+                1.0,
+            ),
+        transform_matrix
+            * vec4(
+                1.0 - params.offset.x - tx,
+                1.0 - params.offset.y - ty,
+                0.0,
+                1.0,
+            ),
+        transform_matrix
+            * vec4(
+                1.0 - params.offset.x - tx,
+                0.0 - params.offset.y + ty,
+                0.0,
+                1.0,
+            ),
     ];
 
     // TODO: fix UVs
-    #[rustfmt::skip]
-    let vertices = [
-        Vertex::new(v[0].x, v[0].y, v[0].z, 0.0, 1.0, params.color),
-        Vertex::new(v[1].x, v[1].y, v[1].z, 1.0, 0.0, params.color),
-        Vertex::new(v[2].x, v[2].y, v[2].z, 1.0, 1.0, params.color),
-        Vertex::new(v[3].x, v[3].y, v[3].z, 1.0, 0.0, params.color),
 
-        Vertex::new(v[4].x, v[4].y, v[4].z, 0.0, 0.0, params.color),
-        Vertex::new(v[5].x, v[5].y, v[5].z, 0.0, 0.0, params.color),
-        Vertex::new(v[6].x, v[6].y, v[6].z, 0.0, 0.0, params.color),
-        Vertex::new(v[7].x, v[7].y, v[7].z, 0.0, 0.0, params.color),
+    let vertices = [
+        Vertex::new(
+            vertices[0].x,
+            vertices[0].y,
+            vertices[0].z,
+            0.0,
+            1.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[1].x,
+            vertices[1].y,
+            vertices[1].z,
+            1.0,
+            0.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[2].x,
+            vertices[2].y,
+            vertices[2].z,
+            1.0,
+            1.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[3].x,
+            vertices[3].y,
+            vertices[3].z,
+            1.0,
+            0.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[4].x,
+            vertices[4].y,
+            vertices[4].z,
+            0.0,
+            0.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[5].x,
+            vertices[5].y,
+            vertices[5].z,
+            0.0,
+            0.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[6].x,
+            vertices[6].y,
+            vertices[6].z,
+            0.0,
+            0.0,
+            params.color,
+        ),
+        Vertex::new(
+            vertices[7].x,
+            vertices[7].y,
+            vertices[7].z,
+            0.0,
+            0.0,
+            params.color,
+        ),
     ];
     #[rustfmt::skip]
     let indices: [u16; 24] = [
